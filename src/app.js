@@ -7,14 +7,14 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const e = require('express');
 const app = express();
-const port = 3000;
+const port = 4000;
 
 app.use(bodyParser.json());
 
 const personRepository = AppDataSource.getRepository(Person);
 const roleRepository = AppDataSource.getRepository(Role);
 
-// List all entries in Person
+// 1 List all entries in Person
 app.get('/persons', async (req, res) => {
   let persons = await personRepository.find({
     relations: {
@@ -24,7 +24,7 @@ app.get('/persons', async (req, res) => {
   res.send(persons);
 });
 
-// Search Person by last_name
+// 2 Search Person by last_name
 app.get('/persons/:last_name', async (req, res) => {
   let persons = await personRepository.find({
     where: {
@@ -37,7 +37,7 @@ app.get('/persons/:last_name', async (req, res) => {
   res.send(persons);
 });
 
-// Insert a new entry in Person
+// 3 Insert a new entry in Person
 app.post('/addPerson', async (req, res) => {
   let { first_name, last_name, email } = req.body
   let dbResult = await personRepository.save({
@@ -48,7 +48,7 @@ app.post('/addPerson', async (req, res) => {
   res.send(dbResult)
 });
 
-// Update first_name and last_name using email
+// 4 Update first_name and last_name using email
 app.patch('/persons/:email', async (req, res) => {
   let person = await personRepository.findOne({
     where: {
@@ -61,7 +61,7 @@ app.patch('/persons/:email', async (req, res) => {
   res.send(result);
 });
 
-// Remove entries in People using email
+// 5 Remove entries in People using email
 app.delete('/persons/:email', async (req, res) => {
   let person = await personRepository.findOne({
     where: {
@@ -72,50 +72,102 @@ app.delete('/persons/:email', async (req, res) => {
   res.send('Removed');
 });
 
-// List all entries in Role
+// 6 List all entries in Role
 app.get('/roles', async (req, res) => {
   let roles = await roleRepository.find();
   res.send(roles);
 });
 
-// Insert a new entry in Role
+// 7 Insert a new entry in Role
 app.post('/roles', async (req, res) => {
-  let role = new Role();
-  role.name = req.body.name;
+  let { name } = req.body;
+  let role = { name };
   let result = await roleRepository.save(role);
   res.send(result);
-});
+});  
 
-// Remove entries in Role using Name
+// 8 Remove entries in Role using Name 
 app.delete('/roles/:name', async (req, res) => {
-  let role = await roleRepository.findOne({
-    where: {
-      name: req.params.name
+  const { name } = req.params;
+  try {
+    const role = await roleRepository.findOne({
+      where: { name }
+    });
+    if (!role) {
+      return res.status(404).send('Role not found.');
     }
-  });
-  await roleRepository.remove(role);
-  res.send('Removed');
+    await roleRepository.remove(role);
+    res.send('Role removed successfully.');
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('An error occurred while deleting the role.');
+  }
 });
 
-// Vinculate one Person to one Role
-app.post('/persons/:person_id/roles/:role_id', async (req, res) => {
-  let person = await personRepository.findOne(req.params.person_id, {
+// 9 Vinculate one Person to one Role
+app.post('/persons/:email/roles/:name', async (req, res) => {
+  const { email, name } = req.params;
+  const person = await personRepository.findOne({
+    where: { email },
     relations: ['roles']
   });
-  let role = await roleRepository.findOne(req.params.role_id);
-  person.roles.push(role);
-  let result = await personRepository.save(person);
-  res.send(result);
+  const role = await roleRepository.findOne({ where: { name } });
+  if (person && role) {
+    person.roles = role.name;
+    const result = await personRepository.save(person);
+    res.send(result);
+  } else {
+    res.status(404).send('Person or role not found.');
+  }
 });
 
-// Search all Person with one Role
-app.get('/roles/:role_id/persons', async (req, res) => {
-  let persons = await personRepository.find({
+// 10 Search all Person with one Role
+app.get('/roles/:names/persons', async (req, res) => {
+  const roleNames = req.params.names.split(',');
+  const persons = await personRepository.find({
     where: {
       roles: {
-        id: req.params.role_id
+        name: roleNames
       }
     },
     relations: ['roles']
   });
-  res.send(persons)})
+  res.send(persons);
+});
+
+// 11 Get all Roles of one Person F CHECK
+app.get('/persons/:email/roles', async (req, res) => {
+  const person = await personRepository.findOne({
+    where: {
+      email: req.params.email
+    },
+    relations: ['roles']
+  });
+  if (person) {
+    res.send(person.roles);
+  } else {
+    res.status(404).send('Person not found.');
+  }
+});
+
+// 12 Remove one Role of one Person 
+app.delete('/persons/:email/roles/:name', async (req, res) => {
+  const { email, name } = req.params;
+  const person = await personRepository.findOne({
+    where: {
+      email
+    },
+    relations: ['roles']
+  });
+  if (person) {
+    person.roles = person.roles.filter(role => role.name !== name);
+    const result = await personRepository.save(person);
+    res.send(result);
+  } else {
+    res.status(404).send('Person not found.');
+  }
+});
+
+app.listen(port, () => {
+  console.log(`App listening on port ${port}`);
+});
